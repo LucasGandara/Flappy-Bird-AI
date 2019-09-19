@@ -13,8 +13,10 @@ BIRD_IMGS = [pygame.transform.scale2x(pygame.image.load(os.path.join("imgs","bir
 PIPE_IMG = pygame.transform.scale2x(pygame.image.load(os.path.join("imgs","pipe.png")))
 BASE_IMG = pygame.transform.scale2x(pygame.image.load(os.path.join("imgs","base.png"))) 
 BG_IMG = pygame.transform.scale2x(pygame.image.load(os.path.join("imgs","bg.png")))
-
+ 
 STAT_FONT = pygame.font.SysFont("comicsans", 50)
+
+pygame.display.set_caption("Flappy Bird")
 
 class Bird:
     IMGS = BIRD_IMGS
@@ -23,9 +25,15 @@ class Bird:
     ANIMATION_TIME = 5
 
     def __init__(self,x,y):
+        """
+        Initialize the object
+        :param x: starting x pos (int)
+        :param y: starting y pos (int)
+        :return: None
+        """
         self.x = x
         self.y = y
-        self.tilt = 0
+        self.tilt = 0  # degrees to tilt
         self.tick_count = 0
         self.vel = 0
         self.height = self.y
@@ -33,27 +41,37 @@ class Bird:
         self.img = self.IMGS[0]
 
     def jump(self):
+        """
+        make the bird jump
+        :return: None
+        """
         self.vel = -10.5
         self.tick_count = 0
         self.height = self.y
     
     def move(self):
+        """
+        make the bird move
+        :return: None
+        """
         self.tick_count += 1
 
-        d = self.vel * (self.tick_count) + 0.5 * (self.tick_count)**2
+        # for downward acceleration
+        displacement = self.vel*(self.tick_count) + 0.5*(3)*(self.tick_count)**2  # calculate displacement
 
-        if d >= 16:
-            d = (d/abs(d)) * 16
+        # terminal velocity
+        if displacement >= 16:
+            displacement = (displacement/abs(displacement)) * 16
 
-        if d < 0:
-            d -= 2
+        if displacement < 0:
+            displacement -= 2
 
-        self.y = self.y + d
+        self.y = self.y + displacement
 
-        if d < 0 or self.y < self.height + 50:
+        if displacement < 0 or self.y < self.height + 50:  # tilt up
             if self.tilt < self.MAX_ROTATION:
-                self.titl = self.MAX_ROTATION
-        else:
+                self.tilt = self.MAX_ROTATION
+        else:  # tilt down
             if self.tilt > -90:
                 self.tilt -= self.ROT_VEL
 
@@ -150,7 +168,7 @@ class Base:
         win.blit(self.IMG, (self.x1, self.y))
         win.blit(self.IMG, (self.x2, self.y))
 
-def draw_window(win,bird, pipes, base, score):
+def draw_window(win,birds, pipes, base, score):
     win.blit(BG_IMG,(0,0))
     
     for pipe in pipes:
@@ -160,7 +178,8 @@ def draw_window(win,bird, pipes, base, score):
 
     win.blit(text, (WIN_WIDTH - 10 - text.get_width(), 10))
     base.draw(win)
-    bird.draw(win)
+    for bird in birds:
+        bird.draw(win)
     pygame.display.update()
 
 
@@ -169,8 +188,12 @@ def main(genomes, config):
     ge = []
     birds = []
 
-    for g in  genomes:
-        net = neat.nn.FeedForwardNetwork(g,config)
+    for _, g in  genomes:
+        net = neat.nn.FeedForwardNetwork.create(g,config)
+        nets.append(net)
+        birds.append(Bird(230,350))
+        g.fitness = 0
+        ge.append(g)
 
     score = 0
 
@@ -187,15 +210,39 @@ def main(genomes, config):
         for event  in pygame.event.get():
             if event.type == pygame.QUIT:
                 run = False
+                pygame.quit()
+                quit()
         # Movement 
 
-        #bird.move()
-        rem = []
-        
+        # CHeck wich pipe is closer to the bird
+        pipe_ind = 0
+        if len(birds) > 0:
+            if len(pipes) > 1 and birds[0].x > pipes[0].x + pipes[0].PIPE_TOP.get_width():
+                pipe_ind = 1
+        else:
+            # If there is no birds left
+            run = False
+            break
+
+
+        for x,bird in enumerate(birds):
+            bird.move()
+            ge[x].fitness += 0.1
+            
+            output = nets[x].activate((bird.y, abs(bird.y - pipes[pipe_ind].height), abs(bird.y - pipes[pipe_ind].bottom)))
+            
+            if output[0] > 0.5:
+                bird.jump()
+
+        rem = []        
         for pipe in pipes:
-            for bird in birds:
+            for x,bird in enumerate(birds):
                 if pipe.collide(bird):
-                    pass
+                    ge[x].fitness -= 1
+                    birds.pop(x)
+                    nets.pop(x)
+                    ge.pop(x)
+                     
             
                 if not pipe.passed and pipe.x < bird.x:
                     pipe.passed = True
@@ -208,22 +255,23 @@ def main(genomes, config):
 
         if add_pipe:
             score += 1
+            for g in ge:
+                g.fitness += 5
+
             pipes.append(Pipe(600))
             add_pipe = False
 
         for r in rem:
             pipes.remove(r)
 
-        for bird in birds:
-            if bird.y + bird.img.get_height() >= 730:
-                pass
+        for x, bird in enumerate(birds):
+            if bird.y + bird.img.get_height() >= 730 or bird.y < 0:
+                birds.pop(x)
+                nets.pop(x)
+                ge.pop(x)
 
         base.move()
-        draw_window(win,bird,pipes,base, score)
-
-    pygame.quit()
-    quit()
-
+        draw_window(win,birds,pipes,base, score)
 
 
 def run(config_path):
@@ -240,6 +288,6 @@ def run(config_path):
     winner = p.run(main, 50)
 if __name__ == "__main__":
     local_dir = os.path.dirname(__file__)
-    config_path = os.path.join(local_dir, "confif-feedforward.txt")
+    config_path = os.path.join(local_dir,"config-feedforward.txt")
 
     run(config_path)
