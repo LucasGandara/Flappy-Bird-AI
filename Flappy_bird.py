@@ -206,7 +206,14 @@ def main(genomes, config):
     
     run = True
     while run:
-        clock.tick(20)
+        if score < 3:
+            clock.tick(500)
+        else:
+            clock.tick(30)
+        
+        if score > 50:
+            pygame.quit()
+
         for event  in pygame.event.get():
             if event.type == pygame.QUIT:
                 run = False
@@ -272,7 +279,7 @@ def main(genomes, config):
 
         base.move()
         draw_window(win,birds,pipes,base, score)
-
+        
 
 def run(config_path):
     config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
@@ -286,6 +293,7 @@ def run(config_path):
     p.add_reporter(stats)
 
     winner = p.run(main, 50)
+
 if __name__ == "__main__":
     local_dir = os.path.dirname(__file__)
     config_path = os.path.join(local_dir,"config-feedforward.txt")
